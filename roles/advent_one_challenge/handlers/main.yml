@@ -1,0 +1,13 @@
+---
+- name: restart_ssh
+  service:
+    name: sshd
+    state: restarted
+  become: true
+
+- name: restart_httpd
+  service:
+    name: httpd
+    state: restarted
+    enabled: true
+  become: true

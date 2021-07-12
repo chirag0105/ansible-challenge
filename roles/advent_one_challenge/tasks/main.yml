@@ -1,0 +1,25 @@
+- name: Provision the EC2 instances
+  amazon.aws.ec2:
+    aws_access_key: "{{ ec2_access_key }}"
+    aws_secret_key: "{{ ec2_secret_key }}"
+    instance_type: t2.micro
+    key_name: "{{ my_key_name }}"
+    image: "{{ image }}"
+    wait: true
+    group: "{{ sec_group }}"
+    assign_public_ip: true
+    vpc_subnet_id: "{{ subnet_id }}"
+    exact_count: 1
+    region: "{{ region }}"
+    count_tag:
+      Name: "{{ vars[instance].counttag }}"
+    instance_tags:
+      Name: "{{ vars[instance].name }}"
+      user: "{{ vars[instance].user }}"
+  register: ec2
+  when: play_name == "provision"
+
+- name: "main > Configure EC2 webservers"
+  include_tasks: configure-ec2-webservers.yml
+  when: play_name == "configure"
+

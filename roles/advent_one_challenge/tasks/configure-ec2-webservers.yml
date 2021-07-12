@@ -1,0 +1,51 @@
+---
+- name: "configure ec2 WebServer > install packages on webserver"
+  package:
+    name:
+      - openssl
+      - httpd
+      - mod_ssl
+      - mod_http2
+    state: present
+
+- name: "configure ec2 WebServer > create SSL directories"
+  file:
+    path: /etc/ssl/my_ssl
+    state: directory
+    mode: '0755'
+- name: "configure ec2 WebServer > Generate private keys"
+  openssl_privatekey:
+    path: /etc/ssl/my_ssl/my_private.key
+- name: "configure ec2 WebServer > Generate CSR"
+  openssl_csr:
+    path: /etc/ssl/my_ssl/my_client.csr
+    privatekey_path: /etc/ssl/my_ssl/my_private.key
+    common_name: "{{ inventory_hostname }}"
+- name: "configure ec2 WebServer > Generate Self-Signed certificate"
+  openssl_certificate:
+    csr_path: /etc/ssl/my_ssl/my_client.csr
+    privatekey_path: /etc/ssl/my_ssl/my_private.key
+    path: /etc/ssl/my_ssl/my_cert.crt
+    provider: selfsigned
+- name: "configure ec2 WebServer > Install SSL cert by creating ssl.conf for HTTPS"
+  lineinfile:
+    path: /etc/httpd/conf/ssl.conf
+    line: "{{ item }}"
+    create: true
+    mode: '0644'
+  loop:
+    - SSLCertificateKeyFile "/etc/ssl/my_ssl/my_private.key"
+    - SSLCertificateFile "/etc/ssl/my_ssl/my_cert.crt"
+- name: "configure ec2 WebServer > disallow root login (SSH Hardening)"
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#PermitRootLogin'
+    line: 'PermitRootLogin no'
+
+- name: Disable SSH password authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#PasswordAuthentication yes'
+    line: 'PasswordAuthentication no'
+  notify:
+    - restart_ssh

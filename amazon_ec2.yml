@@ -1,0 +1,109 @@
+# Playbook to create ec2 instance
+---
+- hosts: localhost
+  connection: local
+  gather_facts: False
+
+  handlers:
+    - name: create_keys
+      copy:
+        content: "{{ key_result.key.private_key }}"
+        dest: "{{ playbook_dir }}/{{ my_key_name }}.pem"
+        mode: '0400'
+      register: created_key
+
+  tasks:
+      - name: Get instances facts
+        ec2_instance_facts:
+          aws_access_key: "{{ec2_access_key}}"
+          aws_secret_key: "{{ec2_secret_key}}"
+          region: "{{ region }}"
+        register: result
+
+      - name: Create a vpc
+        ec2_vpc_net:
+          name: aws_challenge
+          region: "{{ region }}"
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
+          cidr_block: "10.0.0.0/16"
+        register: my_vpc
+
+      - name: Assign a subnet to the VPC
+        amazon.aws.ec2_vpc_subnet:
+          state: present
+          vpc_id: "{{ my_vpc.vpc.id }}"
+          cidr: 10.0.10.0/24
+          region: "{{ region }}"
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
+        register: my_subnet
+
+
+      - name: Open up Internet Gateway(IGW) for created VPC
+        ec2_vpc_igw:
+          vpc_id: "{{ my_vpc.vpc.id }}"
+          state: present
+          region: "{{ region }}"
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
+        register: my_igw
+
+      - name: Setup routing tables for public access
+        ec2_vpc_route_table:
+          region: "{{ region }}"
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
+          vpc_id: "{{ my_vpc.vpc.id }}"
+          subnets:
+            - "{{ my_subnet.subnet.id }}"
+          routes:
+            - dest: 0.0.0.0/0
+              gateway_id: "{{ my_igw.gateway_id }}"
+        register: route_table
+
+      - name: Generate new keypair to login to hosts
+        ec2_key:
+          force: true
+          name: "{{ my_key_name }}"
+          region: "{{ region }}"
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
+        register: key_result
+        notify: create_keys
+
+
+      - name: Creating Security Group for WebServer on AWS
+        ec2_group:
+          name: "{{ sec_group }}"
+          description: Security Group for Web Server allowing port for 80/443/22 (http/https/ssh)
+          region: "{{ region }}"
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
+          vpc_id: "{{ my_vpc.vpc.id }}"
+          state: present
+          rules:
+          - proto: tcp
+            ports:
+              - 22
+              - 80
+              - 443
+            cidr_ip: 0.0.0.0/0
+            rule_desc: allowing traffic on ssh/http/https
+          - proto: icmp
+            cidr_ip: 0.0.0.0/0
+            ports:
+              - -1
+
+
+      - name: Create the EC2 instances for each instance in var file
+        include_role:
+          name: advent_one_challenge
+        vars:
+          play_name: "provision"
+          instance: "{{ item }}"
+          subnet_id: "{{ my_subnet.subnet.id }}"
+        with_items: "{{ instances }}"
+          
+      - name: Refresh inventory to ensure new instaces exist in inventory
+        meta: refresh_inventory

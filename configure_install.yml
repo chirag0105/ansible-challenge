@@ -1,0 +1,75 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: False
+
+  tasks:
+  - name: Refresh inventory to ensure new instaces exist in inventory
+    meta: refresh_inventory
+
+- hosts: _awxuser
+  remote_user: ec2-user
+  become: true
+
+
+  tasks:
+  - name: Configure the Instances (SSL / No Root Login)
+    include_role:
+      name: advent_one_challenge
+    vars:
+      play_name: "configure"
+
+- name: Get the car game hosted on EC2
+  hosts: _car_game
+  remote_user: ec2-user
+  become: true
+
+  handlers:
+    - name: restart_httpd
+      service:
+        name: httpd
+        state: restarted
+        enabled: true
+      become: true
+
+  tasks:
+    - name: Get the Car Game from Challenge Page
+      get_url:
+        url: https://onehtmlpagechallenge.com/entries/mini_car_game.html
+        dest: /var/www/html/index.html
+        force: true
+        mode: '0755'
+      notify:
+        - restart_httpd
+
+    - name: URL for the instance
+      debug:
+        msg: the URL for app is https://{{ inventory_hostname }}
+
+- name: Get the snake game hosted on EC2
+  hosts: _snake_game
+  remote_user: ec2-user
+  become: true
+
+  handlers:
+    - name: restart_httpd
+      service:
+        name: httpd
+        state: restarted
+        enabled: true
+      become: true
+
+  tasks:
+    - name: Get the Snake Game from Challenge Page
+      get_url:
+        url: https://onehtmlpagechallenge.com/entries/Snakegame.html
+        dest: /var/www/html/index.html
+        force: true
+        mode: '0755'
+      notify:
+        - restart_httpd
+
+    - name: URL for the instance
+      debug:
+        msg: the URL for app is https://{{ inventory_hostname }}
+
